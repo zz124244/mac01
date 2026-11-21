@@ -7,6 +7,9 @@ workflows:
       xcode: latest
       node: latest
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.jiuhe.app
 
     scripts:
       - name: Install npm dependencies
@@ -25,6 +28,10 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           pod install --project-directory=ios/App
+
+      - name: Set up signing profiles
+        script: |
+          xcode-project use-profiles
 
       - name: Build IPA
         script: |
