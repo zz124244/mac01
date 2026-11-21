@@ -1,15 +1,12 @@
 workflows:
   ios-capacitor:
-    name: iOS Capacitor Build
+    name: iOS Capacitor Unsigned IPA
     instance_type: mac_mini_m2
 
     environment:
       xcode: latest
       node: latest
       cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.jiuhe.app
 
     scripts:
       - name: Install npm dependencies
@@ -29,16 +26,34 @@ workflows:
         script: |
           pod install --project-directory=ios/App
 
-      - name: Set up signing profiles
+      - name: Build unsigned archive
         script: |
-          xcode-project use-profiles
+          xcodebuild \
+            -workspace "$CM_BUILD_DIR/ios/App/App.xcworkspace" \
+            -scheme "App" \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath "$CM_BUILD_DIR/build/App.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
 
-      - name: Build IPA
+      - name: Package unsigned IPA
         script: |
-          xcode-project build-ipa \
-            --workspace "$CM_BUILD_DIR/ios/App/App.xcworkspace" \
-            --scheme "App"
+          APP_PATH=$(find "$CM_BUILD_DIR/build/App.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" -print -quit)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "未找到 .app 文件"
+            exit 1
+          fi
+
+          mkdir -p "$CM_BUILD_DIR/build/unsigned/Payload"
+          cp -R "$APP_PATH" "$CM_BUILD_DIR/build/unsigned/Payload/"
+
+          cd "$CM_BUILD_DIR/build/unsigned"
+          zip -qry "$CM_BUILD_DIR/build/App-unsigned.ipa" Payload
 
     artifacts:
-      - build/ios/ipa/*.ipa
+      - build/App-unsigned.ipa
+      - build/App.xcarchive
       - /tmp/xcodebuild_logs/*.log
