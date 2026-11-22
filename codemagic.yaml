@@ -1,5 +1,5 @@
 workflows:
-  ios-unsigned:
+  ios-capacitor:
     name: iOS unsigned IPA
     environment:
       groups:
