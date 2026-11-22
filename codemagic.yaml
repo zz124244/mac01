@@ -1,59 +1,41 @@
 workflows:
   ios-capacitor:
-    name: iOS Capacitor Unsigned IPA
+    name: iOS Capacitor Build
     instance_type: mac_mini_m2
 
     environment:
       xcode: latest
       node: latest
       cocoapods: default
+      vars:
+        VITE_API_ORIGIN: "https://api.jiuhechuangtou.com"
 
     scripts:
       - name: Install npm dependencies
         script: |
-          npm config set registry https://registry.npmjs.org/
           npm ci --registry=https://registry.npmjs.org/
 
       - name: Build web application
         script: |
+          node scripts/check-release-env.mjs
           npm run build
+          node scripts/verify-api-embedded.mjs dist
 
       - name: Sync Capacitor iOS project
         script: |
           npx cap sync ios
+          node scripts/verify-api-embedded.mjs ios/App/App/public
 
       - name: Install CocoaPods dependencies
         script: |
           pod install --project-directory=ios/App
 
-      - name: Build unsigned archive
+      - name: Build IPA
         script: |
-          xcodebuild \
-            -workspace "$CM_BUILD_DIR/ios/App/App.xcworkspace" \
-            -scheme "App" \
-            -sdk iphoneos \
-            -configuration Release \
-            -archivePath "$CM_BUILD_DIR/build/App.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            archive
-
-      - name: Package unsigned IPA
-        script: |
-          APP_PATH=$(find "$CM_BUILD_DIR/build/App.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" -print -quit)
-
-          if [ -z "$APP_PATH" ]; then
-            echo "未找到 .app 文件"
-            exit 1
-          fi
-
-          mkdir -p "$CM_BUILD_DIR/build/unsigned/Payload"
-          cp -R "$APP_PATH" "$CM_BUILD_DIR/build/unsigned/Payload/"
-
-          cd "$CM_BUILD_DIR/build/unsigned"
-          zip -qry "$CM_BUILD_DIR/build/App-unsigned.ipa" Payload
+          xcode-project build-ipa \
+            --workspace "$CM_BUILD_DIR/ios/App/App.xcworkspace" \
+            --scheme "App"
 
     artifacts:
-      - build/App-unsigned.ipa
-      - build/App.xcarchive
+      - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
