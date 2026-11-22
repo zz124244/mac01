@@ -1,41 +1,36 @@
 workflows:
-  ios-capacitor:
-    name: iOS Capacitor Build
-    instance_type: mac_mini_m2
-
+  ios-unsigned:
+    name: iOS unsigned IPA
     environment:
+      groups:
+        - production
+      node: "22"
       xcode: latest
-      node: latest
       cocoapods: default
-      vars:
-        VITE_API_ORIGIN: "https://api.jiuhechuangtou.com"
-
     scripts:
-      - name: Install npm dependencies
+      - name: Install frontend dependencies
+        script: npm ci --no-audit --no-fund
+      - name: Build and verify iOS assets
+        script: npm run build:ios-release
+      - name: Sync iOS and install CocoaPods
         script: |
-          npm ci --registry=https://registry.npmjs.org/
-
-      - name: Build web application
-        script: |
-          node scripts/check-release-env.mjs
-          npm run build
-          node scripts/verify-api-embedded.mjs dist
-
-      - name: Sync Capacitor iOS project
-        script: |
-          npx cap sync ios
+          set -euo pipefail
+          npx --no-install cap sync ios
           node scripts/verify-api-embedded.mjs ios/App/App/public
-
-      - name: Install CocoaPods dependencies
+      - name: Archive and package unsigned IPA
         script: |
-          pod install --project-directory=ios/App
-
-      - name: Build IPA
-        script: |
-          xcode-project build-ipa \
-            --workspace "$CM_BUILD_DIR/ios/App/App.xcworkspace" \
-            --scheme "App"
-
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          output="$PWD/build/ios"
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$stage/App.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO archive
+          app="$stage/App.xcarchive/Products/Applications/App.app"
+          test -f "$app/Info.plist"
+          node scripts/verify-api-embedded.mjs "$app/public"
+          mkdir -p "$stage/Payload" "$output"
+          ditto "$app" "$stage/Payload/App.app"
+          ditto -c -k --keepParent "$stage/Payload" "$output/jiuhe-unsigned.ipa"
+          unzip -tq "$output/jiuhe-unsigned.ipa"
     artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
+      - build/ios/*.ipa
